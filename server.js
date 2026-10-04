@@ -63,7 +63,7 @@ const LB={m:'Miệng',q:'15 phút',t:'Thi'},CL={P:'Có mặt',A:'Vắng có phé
 const ROLES=['sysadmin','teacher','helper'];
 
 app.get('/api/me',auth,A(async(q,r)=>{const u=q.u,cl=(await Q1('SELECT id,name FROM classes ORDER BY id')).map(x=>({id:Number(x.id),name:x.name}));
-  r.json({me:{name:u.name,role:u.role==='helper'?'helper':'admin',kind:u.role,classId:u.class_id},classes:u.role==='sysadmin'?cl:cl.filter(x=>x.id===u.class_id),settings:await getSet()})}));
+  r.json({me:{name:u.name,username:u.username,role:u.role==='helper'?'helper':'admin',kind:u.role,classId:u.class_id},classes:u.role==='sysadmin'?cl:cl.filter(x=>x.id===u.class_id),settings:await getSet()})}));
 app.get('/api/data',auth,A(async(q,r)=>{const x=await ctx(q,r);if(!x)return;const d=await getDoc(x.c,x.y);
   if(!d)return r.status(404).json({error:'Không có dữ liệu năm học này'});
   r.json({years:await years(x.c),doc:{year:x.y,...view(d,q.u.role)}})}));
