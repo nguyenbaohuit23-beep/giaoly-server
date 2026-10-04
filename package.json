@@ -1,0 +1,1 @@
+{"name":"giaoly-server","version":"2.0.0","private":true,"engines":{"node":">=20"},"scripts":{"start":"node server.js"},"dependencies":{"@libsql/client":"^0.15.0","express":"^4.19.2"}}

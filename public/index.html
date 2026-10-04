@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Quản lý lớp Giáo lý Một</title>
+<style>
+:root{--bg:#f6f3ec;--card:#fff;--ink:#2b2a33;--mut:#777;--pri:#6b2d3c;--line:#e2ddd0}
+*{box-sizing:border-box}body{margin:0;font:16px/1.45 system-ui,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink)}
+header{background:var(--pri);color:#fff;padding:12px 24px}h1{margin:0 0 8px;font-size:20px}
+nav button{background:transparent;color:#fff;border:0;padding:8px 16px;font-size:15px;cursor:pointer;border-radius:6px 6px 0 0}
+nav button.on{background:var(--bg);color:var(--pri);font-weight:600}
+main{max-width:1200px;margin:18px auto;padding:0 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:16px}
+h2{margin:0 0 12px;font-size:18px}.m{color:var(--mut);margin:6px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-bottom:12px}
+label{display:flex;flex-direction:column;font-size:14px;gap:3px}
+input,select{font:inherit;padding:6px 8px;border:1px solid #ccc;border-radius:5px}
+button{font:inherit;background:var(--pri);color:#fff;border:0;border-radius:5px;padding:7px 14px;cursor:pointer}
+button.g{background:#8a8794}button.s{padding:3px 9px;font-size:13px}
+.w{overflow-x:auto}table{border-collapse:collapse;width:100%}
+th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;font-size:15px}th{background:#efe9dc}
+td input[type=number]{width:80px}.ok{color:#17703a;font-weight:600}.bad{color:#b3261e;font-weight:600}
+.top{display:grid;grid-template-columns:1fr 1fr;gap:16px}ol{margin:0;padding-left:20px}
+@media print{.np,header{display:none!important}body{background:#fff}.card{border:0;padding:0}th,td{font-size:12px;padding:3px 5px}}
+@media(max-width:700px){.top{grid-template-columns:1fr}}
+</style></head><body>
+<header class="np"><h1>⛪ Lớp Giáo lý Một — Năm học <span id="yr"></span></h1><nav id="nav"></nav></header>
+<main id="app"></main>
+<script>
+const K='giaoly-v1';
+const DEF={year:'2026-2027',students:[],att:{},set:{w:[1,2,3],A:8,B:6.5,C:5,min:5,mass:80}};
+let S=JSON.parse(JSON.stringify(DEF)),ME=null,tab='hs',editing=null,hk=1,day=new Date().toISOString().slice(0,10);
+function save(){if(ME&&ME.role==='admin')api('/api/admin',{year:S.year,set:S.set,students:S.students.map(({g,...p})=>p)}).then(d=>{S.students=d.doc.students;S.att=d.doc.att}).catch(()=>{})}
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const r2=x=>Math.round((x+1e-9)*100)/100;
+const f2=x=>x==null?'':r2(x).toFixed(2).replace('.',',');
+const pc=x=>x==null?'':Math.round(x)+'%';
+const vn=d=>d?d.split('-').reverse().join('/'):'';
+const given=n=>n.trim().split(/\s+/).pop();
+const sorted=()=>[...S.students].sort((a,b)=>given(a.name).localeCompare(given(b.name),'vi')||a.name.localeCompare(b.name,'vi'));
+const full=s=>((s.saint?s.saint+' ':'')+s.name);
+
+function avg(st,h){const g=(st.g||{})[h]||{},w=S.set.w;
+  if(['m','q','t'].some(k=>g[k]===''||g[k]==null))return null;
+  return (g.m*w[0]+g.q*w[1]+g.t*w[2])/(w[0]+w[1]+w[2])}
+function att(st){const ds=Object.keys(S.att),n=ds.length;let c=0,a=0,u=0,s=0,t=0;
+  ds.forEach(d=>{const e=S.att[d][st.id]||{};if(e.c==='P')c++;if(e.c==='A')a++;if(e.c==='U')u++;if(e.s)s++;if(e.t)t++});
+  const p=v=>n?v/n*100:null;return{n,c,a,u,s,t,pc:p(c),ps:p(s),pt:p(t)}}
+function res(st){const a=avg(st,1),b=avg(st,2),y=a!=null&&b!=null?(a+b)/2:null,A=att(st),why=[];let cls='';
+  if(y!=null){const v=r2(y);cls=v>=S.set.A?'Giỏi':v>=S.set.B?'Khá':v>=S.set.C?'Trung bình':'Yếu';if(v<S.set.min)why.push('thiếu điểm')}
+  else why.push('chưa đủ điểm');
+  if(A.ps==null||A.ps<S.set.mass)why.push('thiếu đi lễ CN');
+  return{a,b,y,cls,A,why,ok:!why.length}}
+const kq=r=>r.ok?'<span class=ok>Lên lớp</span>':'<span class=bad>Chưa đủ ĐK ('+r.why.join(', ')+')</span>';
+
+/* ---------- Thiếu nhi ---------- */
+const F=[['saint','Tên thánh'],['name','Họ và tên'],['dob','Ngày sinh'],['parish','Giáo họ'],['father','Họ tên cha'],['fphone','SĐT cha'],['mother','Họ tên mẹ'],['mphone','SĐT mẹ'],['addr','Địa chỉ'],['note','Ghi chú']];
+function vHS(){const e=editing?S.students.find(x=>x.id===editing)||{}:{};
+  return `<div class="card np"><h2>${editing?'Sửa':'Thêm'} thiếu nhi</h2><div class="grid">${F.map(([k,l])=>`<label>${l}<input id="f_${k}" ${k==='dob'?'type="date"':''} value="${esc(e[k])}"></label>`).join('')}</div>
+  <button onclick="saveHS()">Lưu</button> ${editing?'<button class="g" onclick="editing=null;show()">Hủy</button>':''}</div>
+  <div class="card"><h2>Danh sách (${S.students.length} em)</h2><div class="w"><table><tr><th>STT<th>Tên thánh<th>Họ tên<th>Ngày sinh<th>Giáo họ<th>Cha<th>SĐT cha<th>Mẹ<th>SĐT mẹ<th>Ghi chú<th class="np"></tr>
+  ${sorted().map((s,i)=>`<tr><td>${i+1}<td>${esc(s.saint)}<td>${esc(s.name)}<td>${vn(s.dob)}<td>${esc(s.parish)}<td>${esc(s.father)}<td>${esc(s.fphone)}<td>${esc(s.mother)}<td>${esc(s.mphone)}<td>${esc(s.note)}<td class="np"><button class="s" onclick="editing='${s.id}';show();scrollTo(0,0)">Sửa</button> <button class="s g" onclick="delHS('${s.id}')">Xóa</button>`).join('')}</table></div></div>`}
+function saveHS(){const v={};F.forEach(([k])=>v[k]=$('#f_'+k).value.trim());
+  if(!v.name){alert('Vui lòng nhập họ và tên');return}
+  if(editing)Object.assign(S.students.find(x=>x.id===editing),v);
+  else S.students.push({id:'a'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),g:{},...v});
+  editing=null;save();show()}
+function delHS(id){const s=S.students.find(x=>x.id===id);
+  if(!confirm('Xóa '+full(s)+'? Điểm và điểm danh của em cũng bị xóa.'))return;
+  S.students=S.students.filter(x=>x.id!==id);Object.values(S.att).forEach(d=>delete d[id]);save();show()}
+
+/* ---------- Điểm ---------- */
+function vD(){const w=S.set.w;
+  return `<div class="card"><h2>Nhập điểm <select onchange="hk=+this.value;show()"><option value=1 ${hk==1?'selected':''}>Học kỳ 1<option value=2 ${hk==2?'selected':''}>Học kỳ 2</select></h2>
+  <p class="m">Thang 10. Hệ số: Miệng ×${w[0]}, 15 phút ×${w[1]}, Thi ×${w[2]}. Điểm được tự tính khi đủ 3 cột.</p>
+  <div class="w"><table oninput="inp(event)"><tr><th>STT<th>Họ tên<th>Miệng<th>15 phút<th>Thi<th>TB học kỳ</tr>
+  ${sorted().map((s,i)=>{const g=(s.g||{})[hk]||{};return `<tr><td>${i+1}<td>${esc(full(s))}${['m','q','t'].map(k=>`<td><input type="number" min="0" max="10" step="0.25" data-id="${s.id}" data-k="${k}" value="${g[k]==null?'':g[k]}">`).join('')}<td id="${s.id}_a"><b>${f2(avg(s,hk))}</b>`}).join('')}</table></div></div>`}
+function inp(e){const el=e.target,st=S.students.find(x=>x.id===el.dataset.id);if(!st)return;
+  const v=el.value===''?'':Math.min(10,Math.max(0,+el.value));
+  st.g=st.g||{};st.g[hk]=st.g[hk]||{};st.g[hk][el.dataset.k]=v;op([{t:'g',id:st.id,hk,k:el.dataset.k,v}]);
+  $('#'+st.id+'_a').innerHTML='<b>'+f2(avg(st,hk))+'</b>'}
+
+/* ---------- Điểm danh ---------- */
+function vDD(){const e=S.att[day]||{},ds=Object.keys(S.att).sort().reverse();
+  return `<div class="card"><h2>Điểm danh</h2>
+  <label style="display:inline-flex">Ngày <input type="date" value="${day}" onchange="day=this.value||day;show()"></label>
+  <button onclick="allP()">Tất cả có mặt</button> ${S.att[day]?'<button class="g" onclick="delDay()">Xóa ngày này</button>':''}
+  <p class="m">Đã điểm danh ${ds.length} ngày: ${ds.map(d=>`<a href="#" onclick="day='${d}';show();return false">${vn(d)}</a>`).join(' · ')||'chưa có'}</p>
+  <div class="w"><table onchange="chg(event)"><tr><th>STT<th>Họ tên<th>Học giáo lý<th>Lễ Chúa nhật<th>Lễ thứ Năm</tr>
+  ${sorted().map((s,i)=>{const r=e[s.id]||{};return `<tr><td>${i+1}<td>${esc(full(s))}<td><select data-id="${s.id}" data-k="c">${[['','—'],['P','Có mặt'],['A','Vắng có phép'],['U','Vắng không phép']].map(([v,l])=>`<option value="${v}" ${(r.c||'')===v?'selected':''}>${l}`).join('')}</select>
+  <td><input type="checkbox" data-id="${s.id}" data-k="s" ${r.s?'checked':''}><td><input type="checkbox" data-id="${s.id}" data-k="t" ${r.t?'checked':''}>`}).join('')}</table></div></div>`}
+function chg(e){const el=e.target,id=el.dataset.id;if(!id)return;
+  S.att[day]=S.att[day]||{};const r=S.att[day][id]=S.att[day][id]||{};
+  const v=el.dataset.k==='c'?el.value:el.checked;r[el.dataset.k]=v;op([{t:'att',day,id,k:el.dataset.k,v}])}
+function allP(){S.att[day]=S.att[day]||{};S.students.forEach(s=>{const r=S.att[day][s.id]=S.att[day][s.id]||{};r.c='P'});op(S.students.map(s=>({t:'att',day,id:s.id,k:'c',v:'P'})));show()}
+function delDay(){if(confirm('Xóa điểm danh ngày '+vn(day)+'?')){delete S.att[day];op([{t:'delday',day}]);show()}}
+
+/* ---------- Tổng kết ---------- */
+const rows=()=>sorted().map(s=>({s,r:res(s)}));
+function vTK(){const R=rows(),n=Object.keys(S.att).length;
+  const top=R.filter(x=>x.r.ok).sort((a,b)=>r2(b.r.y)-r2(a.r.y)||b.r.A.ps-a.r.A.ps).slice(0,3);
+  const le=n?[...R].sort((a,b)=>(b.r.A.s+b.r.A.t)-(a.r.A.s+a.r.A.t)).slice(0,3):[];
+  const ds=Object.keys(S.att).sort();const sym={P:'✓',A:'P',U:'K'};
+  return `<div class="card np"><button onclick="window.print()">In</button> <button onclick="csvSD()">Xuất Excel: Sổ điểm</button> <button onclick="csvDD()">Xuất Excel: Sổ điểm danh</button></div>
+  <div class="card"><h2>Sổ điểm năm học ${esc(S.year)}</h2><div class="w"><table><tr><th>STT<th>Họ tên<th>TB HK1<th>TB HK2<th>Cả năm<th>Xếp loại<th>Lễ CN<th>Lễ T5<th>Chuyên cần học<th>Kết quả</tr>
+  ${R.map(({s,r},i)=>`<tr><td>${i+1}<td>${esc(full(s))}<td>${f2(r.a)}<td>${f2(r.b)}<td><b>${f2(r.y)}</b><td>${r.cls}<td>${pc(r.A.ps)}<td>${pc(r.A.pt)}<td>${pc(r.A.pc)}<td>${kq(r)}`).join('')}</table></div></div>
+  <div class="top card"><div><h2>3 em tiêu biểu</h2><p class="m">Trong các em đủ điều kiện lên lớp: điểm cả năm cao nhất, đồng điểm xét đi lễ.</p><ol>${top.map(x=>`<li>${esc(full(x.s))} — ${f2(x.r.y)} điểm, lễ CN ${pc(x.r.A.ps)}`).join('')||'<li>Chưa có'}</ol></div>
+  <div><h2>3 em đi lễ nhiều nhất</h2><p class="m">Tổng số lần đi lễ Chúa nhật và thứ Năm.</p><ol>${le.map(x=>`<li>${esc(full(x.s))} — ${x.r.A.s+x.r.A.t} lần (CN ${x.r.A.s}, T5 ${x.r.A.t})`).join('')||'<li>Chưa có'}</ol></div></div>
+  <div class="card"><h2>Sổ điểm danh</h2><p class="m">✓ có mặt · P vắng có phép · K vắng không phép · CN đi lễ Chúa nhật · T5 đi lễ thứ Năm</p>
+  <div class="w"><table><tr><th>Họ tên${ds.map(d=>`<th>${vn(d).slice(0,5)}`).join('')}<th>Có mặt<th>Vắng P<th>Vắng K<th>Lễ CN<th>Lễ T5</tr>
+  ${R.map(({s,r})=>`<tr><td>${esc(full(s))}${ds.map(d=>{const e=S.att[d][s.id]||{};return `<td>${sym[e.c]||''} ${e.s?'CN':''} ${e.t?'T5':''}`}).join('')}<td>${r.A.c}<td>${r.A.a}<td>${r.A.u}<td>${r.A.s}<td>${r.A.t}`).join('')}</table></div></div>`}
+function dl(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click()}
+function csv(rs){return '\ufeff'+rs.map(r=>r.map(c=>'"'+String(c==null?'':c).replace(/"/g,'""')+'"').join(',')).join('\r\n')}
+function csvSD(){const h=['STT','Tên thánh','Họ tên'];[1,2].forEach(k=>h.push('Miệng HK'+k,'15 phút HK'+k,'Thi HK'+k,'TB HK'+k));
+  h.push('Cả năm','Xếp loại','% Lễ CN','% Lễ T5','% Chuyên cần học','Kết quả');
+  const rs=[h,...rows().map(({s,r},i)=>{const x=[i+1,s.saint,s.name];[1,2].forEach(k=>{const g=(s.g||{})[k]||{};x.push(g.m,g.q,g.t,f2(k==1?r.a:r.b))});
+    return x.concat([f2(r.y),r.cls,pc(r.A.ps),pc(r.A.pt),pc(r.A.pc),r.ok?'Lên lớp':'Chưa đủ ĐK: '+r.why.join(', ')])})];
+  dl('so-diem-'+S.year+'.csv',csv(rs),'text/csv;charset=utf-8')}
+function csvDD(){const ds=Object.keys(S.att).sort(),sym={P:'Có mặt',A:'Vắng phép',U:'Vắng không phép'};
+  const rs=[['STT','Họ tên',...ds.map(vn),'Có mặt','Vắng có phép','Vắng không phép','Lễ CN','Lễ T5'],
+  ...rows().map(({s,r},i)=>[i+1,full(s),...ds.map(d=>{const e=S.att[d][s.id]||{};return [sym[e.c]||'',e.s?'Lễ CN':'',e.t?'Lễ T5':''].filter(Boolean).join(' + ')}),r.A.c,r.A.a,r.A.u,r.A.s,r.A.t])];
+  dl('so-diem-danh-'+S.year+'.csv',csv(rs),'text/csv;charset=utf-8')}
+
+/* ---------- Cài đặt ---------- */
+function vCD(){const t=S.set;const n=(k,l,v,st)=>`<label>${l}<input type="number" step="${st||0.5}" value="${v}" onchange="setv('${k}',this.value)"></label>`;
+  return `<div class="card"><h2>Cài đặt</h2><div class="grid">
+  <label>Năm học<input value="${esc(S.year)}" onchange="S.year=this.value;save();show()"></label>
+  ${n('w0','Hệ số Miệng',t.w[0],1)}${n('w1','Hệ số 15 phút',t.w[1],1)}${n('w2','Hệ số Thi',t.w[2],1)}
+  ${n('A','Giỏi từ điểm',t.A)}${n('B','Khá từ điểm',t.B)}${n('C','Trung bình từ điểm',t.C)}
+  ${n('min','Điểm tối thiểu để lên lớp',t.min)}${n('mass','% đi lễ CN tối thiểu',t.mass,1)}</div></div>
+  <div class="card"><h2>Sao lưu dữ liệu</h2><p class="m">Dữ liệu lưu trên máy chủ. Nên tải file sao lưu định kỳ.</p>
+  <button onclick="dl('sao-luu-giaoly-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(S),'application/json')">Xuất file sao lưu</button>
+  <label style="display:inline-flex;margin-top:10px">Khôi phục từ file sao lưu<input type="file" accept=".json" onchange="imp(this.files[0])"></label></div>`}
+function setv(k,v){v=+v;if(k[0]==='w')S.set.w[+k[1]]=v||1;else S.set[k]=v;save()}
+function imp(f){if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!d.students||!d.set)throw 0;
+  if(confirm('Khôi phục sẽ thay thế toàn bộ dữ liệu hiện tại. Tiếp tục?')){api('/api/restore',d).then(sync).catch(()=>{})}}catch(e){alert('File sao lưu không hợp lệ')}};r.readAsText(f)}
+
+/* ---------- Khung ---------- */
+const T=[['hs','Thiếu nhi',vHS],['d','Điểm',vD],['dd','Điểm danh',vDD],['tk','Tổng kết',vTK],['cd','Cài đặt',vCD],['nk','Nhật ký',()=>'<div class="card"><h2>Nhật ký chỉnh sửa</h2><div class="w" id="lg">Đang tải…</div></div>']];const TT=()=>T.filter(x=>ME&&(ME.role==='admin'||['d','dd','tk'].includes(x[0])));
+function show(t){if(t)tab=t;$('#yr').textContent=S.year;
+  $('#nav').innerHTML=TT().map(([k,l])=>`<button class="${k===tab?'on':''}" onclick="show('${k}')">${l}</button>`).join('')+(ME?`<button onclick="logout()">Đăng xuất (${esc(ME.name)})</button>`:'');
+  $('#app').innerHTML=ME?(TT().find(x=>x[0]===tab)||TT()[0])[2]():vLogin();if(ME&&tab==='nk')loadLog()}
+async function api(p,b){const r=await fetch(p,{method:b?'POST':'GET',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined}),j=await r.json().catch(()=>({}));
+  if(r.status===401&&p!=='/api/login'){ME=null;show();throw 0}if(!r.ok){alert(j.error||'Có lỗi xảy ra');throw 0}return j}
+function op(o){api('/api/op',o).catch(()=>{})}
+async function sync(){try{const d=await api('/api/data');ME=d.me;S=d.doc;if(ME.role!=='admin'&&!['d','dd','tk'].includes(tab))tab='d'}catch(e){}show()}
+function vLogin(){return `<div class="card" style="max-width:340px;margin:40px auto"><h2>Đăng nhập</h2><label>Tên đăng nhập<input id="lu" autocomplete="username"></label><br><label>Mật khẩu<input id="lp" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"></label><br><button onclick="doLogin()">Đăng nhập</button></div>`}
+function doLogin(){api('/api/login',{u:$('#lu').value.trim(),p:$('#lp').value}).then(sync).catch(()=>{})}
+function logout(){api('/api/logout',{}).finally(()=>{ME=null;S=JSON.parse(JSON.stringify(DEF));show()})}
+function loadLog(){api('/api/log').then(r=>{$('#lg').innerHTML='<table><tr><th>Thời gian<th>Người sửa<th>Nội dung</tr>'+r.map(x=>`<tr><td>${new Date(x.ts).toLocaleString('vi-VN')}<td>${esc(x.user)}<td>${esc(x.text)}`).join('')+'</table>'}).catch(()=>{})}
+setInterval(()=>{if(ME&&tab!=='hs'&&tab!=='cd'&&!/INPUT|SELECT/.test(document.activeElement.tagName))api('/api/data').then(d=>{S=d.doc;show()}).catch(()=>{})},20000);
+sync();
+</script></body></html>
