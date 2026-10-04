@@ -62,8 +62,12 @@ const kq=r=>r.ok?'<span class=ok>Lên lớp</span>':'<span class=bad>Chưa đủ
 
 /* ---------- Thiếu nhi ---------- */
 const F=[['saint','Tên thánh'],['name','Họ và tên'],['dob','Ngày sinh'],['parish','Giáo họ'],['father','Họ tên cha'],['fphone','SĐT cha'],['mother','Họ tên mẹ'],['mphone','SĐT mẹ'],['addr','Địa chỉ'],['note','Ghi chú']];
+const PARISHES=['Giu-se','Phê-rô','Phan-xi-cô'];
+function fld([k,l],e){const v=e[k]||'';
+  if(k==='parish'){const o=!v||PARISHES.includes(v)?PARISHES:[...PARISHES,v];return `<label>${l}<select id="f_${k}"><option value="">— Chọn giáo họ —</option>${o.map(x=>`<option ${x===v?'selected':''}>${esc(x)}</option>`).join('')}</select></label>`}
+  return `<label>${l}<input id="f_${k}" ${k==='dob'?'type="date"':''} value="${esc(v)}"></label>`}
 function vHS(){const e=editing?S.students.find(x=>x.id===editing)||{}:{};
-  return `<div class="card np"><h2>${editing?'Sửa':'Thêm'} thiếu nhi</h2><div class="grid">${F.map(([k,l])=>`<label>${l}<input id="f_${k}" ${k==='dob'?'type="date"':''} value="${esc(e[k])}"></label>`).join('')}</div>
+  return `<div class="card np"><h2>${editing?'Sửa':'Thêm'} thiếu nhi</h2><div class="grid">${F.map(f=>fld(f,e)).join('')}</div>
   <button onclick="saveHS()">Lưu</button> ${editing?'<button class="g" onclick="editing=null;show()">Hủy</button>':''}</div>
   <div class="card"><h2>Danh sách (${S.students.length} em)</h2><div class="w"><table><tr><th>STT<th>Tên thánh<th>Họ tên<th>Ngày sinh<th>Giáo họ<th>Cha<th>SĐT cha<th>Mẹ<th>SĐT mẹ<th>Ghi chú<th class="np"></tr>
   ${sorted().map((s,i)=>`<tr><td>${i+1}<td>${esc(s.saint)}<td>${esc(s.name)}<td>${vn(s.dob)}<td>${esc(s.parish)}<td>${esc(s.father)}<td>${esc(s.fphone)}<td>${esc(s.mother)}<td>${esc(s.mphone)}<td>${esc(s.note)}<td class="np"><button class="s" onclick="editing='${s.id}';show();scrollTo(0,0)">Sửa</button> <button class="s g" onclick="delHS('${s.id}')">Xóa</button>`).join('')}</table></div></div>`}
@@ -161,17 +165,23 @@ const ROLE={sysadmin:'Sysadmin',teacher:'Giáo lý viên',helper:'Phụ lớp'};
 const vQT=()=>'<div id="qt">Đang tải…</div>';
 async function loadQT(){try{const m=await api('/api/me');CLASSES=m.classes;const U=await api('/api/users');
   const cn=id=>{const c=CLASSES.find(x=>x.id===id);return c?esc(c.name):'—'};
+  UL=U;const EU=EDU?U.find(x=>x.id===EDU):null;
   $('#qt').innerHTML=`<div class="card"><h2>Lớp học</h2><div class="w"><table><tr><th>Tên lớp<th></tr>${CLASSES.map(c=>`<tr><td>${esc(c.name)}<td><button class="s" onclick="renClass(${c.id})">Đổi tên</button>`).join('')}</table></div>
   <div class="grid" style="margin-top:12px"><label>Tên lớp mới<input id="qc"></label><label>Năm học đầu tiên<input id="qy" placeholder="2026-2027"></label></div><button onclick="addClass()">Thêm lớp</button></div>
   <div class="card"><h2>Tài khoản</h2><div class="w"><table><tr><th>Tên đăng nhập<th>Họ tên<th>Vai trò<th>Lớp<th>Trạng thái<th></tr>
-  ${U.map(u=>`<tr><td>${esc(u.username)}<td>${esc(u.name)}<td>${ROLE[u.role]||''}<td>${u.class_id?cn(u.class_id):'—'}<td>${u.active?'<span class="ok">Đang dùng</span>':'<span class="bad">Đã khóa</span>'}<td><button class="s" onclick="resetPw(${u.id})">Đặt lại mật khẩu</button> <button class="s g" onclick="toggleU(${u.id},${u.active?0:1})">${u.active?'Khóa':'Mở khóa'}</button>`).join('')}</table></div>
-  <h3>Tạo tài khoản mới</h3><p class="m">Mỗi lớp có một giáo lý viên và nhiều phụ lớp.</p><div class="grid"><label>Tên đăng nhập (chữ thường, không dấu)<input id="nu"></label><label>Họ tên hiển thị<input id="nn"></label><label>Mật khẩu (từ 8 ký tự)<input id="np"></label>
-  <label>Vai trò<select id="nr"><option value="teacher">Giáo lý viên<option value="helper">Phụ lớp<option value="sysadmin">Sysadmin</select></label>
-  <label>Lớp (bỏ qua nếu là sysadmin)<select id="ncl">${CLASSES.map(c=>`<option value="${c.id}">${esc(c.name)}`).join('')}</select></label></div><button onclick="addUser()">Tạo tài khoản</button></div>`}catch(e){}}
+  ${U.map(u=>`<tr><td>${esc(u.username)}<td>${esc(u.name)}<td>${ROLE[u.role]||''}<td>${u.class_id?cn(u.class_id):'—'}<td>${u.active?'<span class="ok">Đang dùng</span>':'<span class="bad">Đã khóa</span>'}<td><button class="s" onclick="editU(${u.id})">Sửa</button> <button class="s" onclick="resetPw(${u.id})">Đặt lại mật khẩu</button> <button class="s g" onclick="toggleU(${u.id},${u.active?0:1})">${u.active?'Khóa':'Mở khóa'}</button> <button class="s g" onclick="delU(${u.id})">Xóa</button>`).join('')}</table></div>
+  <h3>${EU?'Sửa tài khoản: '+esc(EU.username):'Tạo tài khoản mới'}</h3><p class="m">Mỗi lớp có một giáo lý viên và nhiều phụ lớp.</p><div class="grid"><label>Tên đăng nhập (chữ thường, không dấu)<input id="nu" value="${EU?esc(EU.username):''}"></label><label>Họ tên hiển thị<input id="nn" value="${EU?esc(EU.name):''}"></label><label>${EU?'Mật khẩu mới (để trống nếu không đổi)':'Mật khẩu (từ 8 ký tự)'}<input id="np"></label>
+  <label>Vai trò<select id="nr">${['teacher','helper','sysadmin'].map(r=>`<option value="${r}" ${EU&&EU.role===r?'selected':''}>${ROLE[r]}</option>`).join('')}</select></label>
+  <label>Lớp (bỏ qua nếu là sysadmin)<select id="ncl">${CLASSES.map(c=>`<option value="${c.id}" ${EU&&EU.class_id===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></label></div><button onclick="addUser()">${EU?'Lưu thay đổi':'Tạo tài khoản'}</button>${EU?' <button class="g" onclick="EDU=null;loadQT()">Hủy</button>':''}</div>`}catch(e){}}
 const afterQT=()=>sync().then(()=>show('qt'));
 function addClass(){api('/api/classes',{name:$('#qc').value.trim(),year:$('#qy').value.trim()}).then(afterQT).catch(()=>{})}
 function renClass(id){const c=CLASSES.find(x=>x.id===id),n=prompt('Tên lớp mới:',c?c.name:'');if(n&&n.trim())api('/api/classes/'+id,{name:n},'PUT').then(afterQT).catch(()=>{})}
-function addUser(){api('/api/users',{username:$('#nu').value,name:$('#nn').value,password:$('#np').value,role:$('#nr').value,class_id:$('#ncl').value}).then(()=>{alert('Đã tạo tài khoản. Hãy gửi tên đăng nhập và mật khẩu cho người dùng.');return afterQT()}).catch(()=>{})}
+let EDU=null,UL=[];
+function addUser(){const b={username:$('#nu').value,name:$('#nn').value,role:$('#nr').value,class_id:$('#ncl').value},pw=$('#np').value;
+  if(EDU){if(pw)b.password=pw;api('/api/users/'+EDU,b,'PUT').then(()=>{EDU=null;alert('Đã lưu thay đổi.');return afterQT()}).catch(()=>{})}
+  else{b.password=pw;api('/api/users',b).then(()=>{alert('Đã tạo tài khoản. Hãy gửi tên đăng nhập và mật khẩu cho người dùng.');return afterQT()}).catch(()=>{})}}
+function editU(id){EDU=id;loadQT().then(()=>scrollTo(0,document.body.scrollHeight))}
+function delU(id){const u=UL.find(x=>x.id===id);if(u&&confirm('Xóa vĩnh viễn tài khoản "'+u.username+'"? Không thể hoàn tác. (Nếu chỉ muốn ngừng sử dụng, hãy chọn Khóa.)'))api('/api/users/'+id,undefined,'DELETE').then(afterQT).catch(()=>{})}
 function resetPw(id){const p=prompt('Nhập mật khẩu mới (từ 8 ký tự):');if(p)api('/api/users/'+id,{password:p},'PUT').then(()=>alert('Đã đặt lại mật khẩu.')).catch(()=>{})}
 function toggleU(id,a){api('/api/users/'+id,{active:!!a},'PUT').then(afterQT).catch(()=>{})}
 
