@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Quản lý lớp Giáo lý</title>
+<title>Quản lý lớp giáo lý</title>
 <style>
 :root{--bg:#f6f3ec;--card:#fff;--ink:#2b2a33;--mut:#777;--pri:#6b2d3c;--line:#e2ddd0}
 *{box-sizing:border-box}body{margin:0;font:16px/1.45 system-ui,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink)}
-header{background:var(--pri);color:#fff;padding:12px 24px}h1{margin:0 0 8px;font-size:20px}
+header{background:var(--pri);color:#fff;padding:12px 24px;position:relative}.by{position:absolute;top:14px;right:24px;font-size:14px;opacity:.9}#author{position:fixed;bottom:8px;right:14px;font-size:12px;opacity:.35;pointer-events:none}@media(max-width:700px){.by{position:static;display:block;margin-bottom:4px}}h1{margin:0 0 8px;font-size:20px}
 nav button{background:transparent;color:#fff;border:0;padding:8px 16px;font-size:15px;cursor:pointer;border-radius:6px 6px 0 0}
 nav button.on{background:var(--bg);color:var(--pri);font-weight:600}
 main{max-width:1200px;margin:18px auto;padding:0 16px}
@@ -22,8 +22,9 @@ td input[type=number]{width:80px}.ok{color:#17703a;font-weight:600}.bad{color:#b
 @media print{.np,header{display:none!important}body{background:#fff}.card{border:0;padding:0}th,td{font-size:12px;padding:3px 5px}}
 @media(max-width:700px){.top{grid-template-columns:1fr}}
 </style></head><body>
-<header class="np"><h1>⛪ <span id="cn">Giáo lý</span></h1><div id="sel" style="margin-bottom:8px"></div><nav id="nav"></nav></header>
+<header class="np"><span class="by" id="who"></span><h1>⛪ Quản lý lớp giáo lý</h1><div id="sel" style="margin-bottom:8px"></div><nav id="nav"></nav></header>
 <main id="app"></main>
+<div id="author" class="np">NguyenNgocBao</div>
 <script>
 const K='giaoly-v1';
 const DEF={year:'2026-2027',students:[],att:{},set:{w:[1,2,3],A:8,B:6.5,C:5,min:5,mass:80}};
@@ -178,8 +179,8 @@ function toggleU(id,a){api('/api/users/'+id,{active:!!a},'PUT').then(afterQT).ca
 const T=[['hs','Thiếu nhi',vHS],['d','Điểm',vD],['dd','Điểm danh',vDD],['tk','Tổng kết',vTK],['cd','Cài đặt',vCD],['nk','Nhật ký',()=>'<div class="card"><h2>Nhật ký chỉnh sửa</h2><div class="w" id="lg">Đang tải…</div></div>'],['qt','Quản trị',vQT]];
 const TT=()=>T.filter(x=>ME&&(x[0]==='qt'?ME.kind==='sysadmin':ME.role==='admin'||['d','dd','tk'].includes(x[0])));
 function show(t){if(t)tab=t;const L=TT(),cur=L.find(x=>x[0]===tab)||L[0];if(cur)tab=cur[0];
-  $('#cn').textContent=ME&&CLS?CN():'Giáo lý';
-  $('#sel').innerHTML=ME?(isSys()&&CLASSES.length?`Lớp: <select onchange="pickC(+this.value)">${CLASSES.map(c=>`<option value="${c.id}" ${c.id===CLS?'selected':''}>${esc(c.name)}`).join('')}</select> &nbsp;`:'')+(YEARS.length?`Năm học: <select onchange="pickY(this.value)">${YEARS.map(y=>`<option ${y===YR?'selected':''}>${esc(y)}`).join('')}</select>`:''):'';
+  $('#who').textContent=ME?'👤 '+(ME.username||ME.name)+' · '+(ROLE[ME.kind]||''):'';
+  $('#sel').innerHTML=ME?(isSys()?(CLASSES.length?`Lớp: <select onchange="pickC(+this.value)">${CLASSES.map(c=>`<option value="${c.id}" ${c.id===CLS?'selected':''}>${esc(c.name)}`).join('')}</select> &nbsp;`:''):(CLS?`Lớp: <b>${esc(CN())}</b> &nbsp;`:''))+(YEARS.length?`Năm học: <select onchange="pickY(this.value)">${YEARS.map(y=>`<option ${y===YR?'selected':''}>${esc(y)}`).join('')}</select>`:''):'';
   $('#nav').innerHTML=L.map(([k,l])=>`<button class="${k===tab?'on':''}" onclick="show('${k}')">${l}</button>`).join('')+(ME?`<button onclick="logout()">Đăng xuất (${esc(ME.name)})</button>`:'');
   $('#app').innerHTML=!ME?vLogin():(!CLS&&cur&&cur[0]!=='qt')?'<div class="card">Chưa có lớp nào. Hãy vào thẻ Quản trị để tạo lớp.</div>':cur?cur[2]():'';
   if(ME&&cur&&cur[0]==='nk')loadLog();if(ME&&cur&&cur[0]==='qt')loadQT()}
