@@ -121,12 +121,23 @@ app.post('/api/users',auth,sys,A((req,res)=>lock(async()=>{const b=req.body||{},
   await db.execute({sql:'INSERT INTO users(username,name,role,class_id,pass) VALUES(?,?,?,?,?)',args:[username,name,role,cid,hashPw(pw)]});
   await glog(req.u.name,`Tạo tài khoản ${username} (${role})`);res.json({ok:1})})));
 app.put('/api/users/:id',auth,sys,A((req,res)=>lock(async()=>{const id=+req.params.id,b=req.body||{},r=await Q1('SELECT * FROM users WHERE id=?',[id]);if(!r.length)return res.status(404).json({error:'Không có tài khoản'});
-  const u=r[0];
-  if('password'in b){if(String(b.password).length<8)return res.status(400).json({error:'Mật khẩu tối thiểu 8 ký tự'});await db.execute({sql:'UPDATE users SET pass=? WHERE id=?',args:[hashPw(String(b.password)),id]});await glog(req.u.name,`Đặt lại mật khẩu cho ${u.username}`)}
-  if('active'in b){const a=b.active?1:0;if(id===req.u.id&&!a)return res.status(400).json({error:'Không thể tự khóa tài khoản của mình'});
-    if(a&&u.role==='teacher'&&await teacherTaken(Number(u.class_id),id))return res.status(409).json({error:'Lớp này đã có giáo lý viên đang dùng'});
-    await db.execute({sql:'UPDATE users SET active=? WHERE id=?',args:[a,id]});await glog(req.u.name,`${a?'Mở khóa':'Khóa'} tài khoản ${u.username}`)}
-  if('name'in b&&String(b.name).trim())await db.execute({sql:'UPDATE users SET name=? WHERE id=?',args:[String(b.name).trim().slice(0,60),id]});
-  res.json({ok:1})})));
+  const u=r[0],bad=m=>res.status(400).json({error:m});
+  let username=u.username,name=u.name,role=u.role,cid=u.class_id==null?null:Number(u.class_id),active=Number(u.active);
+  if('username'in b){username=String(b.username).trim().toLowerCase();if(!/^[a-z0-9._-]{3,30}$/.test(username))return bad('Tên đăng nhập 3-30 ký tự: chữ thường không dấu, số, . _ -');
+    if(username!==u.username&&(await Q1('SELECT id FROM users WHERE username=? AND id<>?',[username,id])).length)return res.status(409).json({error:'Tên đăng nhập đã tồn tại'})}
+  if('name'in b){name=String(b.name).trim().slice(0,60);if(!name)return bad('Nhập họ tên hiển thị')}
+  if('role'in b){if(!ROLES.includes(b.role))return bad('Vai trò không hợp lệ');role=b.role}
+  if('class_id'in b&&role!=='sysadmin')cid=+b.class_id;
+  if(role==='sysadmin')cid=null;else if(!await classOk(cid))return bad('Hãy chọn lớp');
+  if('active'in b)active=b.active?1:0;
+  if(id===req.u.id&&(role!=='sysadmin'||!active))return bad('Không thể tự hạ quyền hoặc tự khóa tài khoản của mình');
+  if(u.role==='sysadmin'&&role!=='sysadmin'&&!(await Q1("SELECT id FROM users WHERE role='sysadmin' AND active=1 AND id<>?",[id])).length)return bad('Phải còn ít nhất một sysadmin đang dùng');
+  if(role==='teacher'&&active&&await teacherTaken(cid,id))return res.status(409).json({error:'Lớp này đã có giáo lý viên đang dùng. Mỗi lớp chỉ có một giáo lý viên.'});
+  if('password'in b){if(String(b.password).length<8)return bad('Mật khẩu tối thiểu 8 ký tự');await db.execute({sql:'UPDATE users SET pass=? WHERE id=?',args:[hashPw(String(b.password)),id]})}
+  await db.execute({sql:'UPDATE users SET username=?,name=?,role=?,class_id=?,active=? WHERE id=?',args:[username,name,role,cid,active,id]});
+  await glog(req.u.name,`Cập nhật tài khoản ${u.username}`+('password'in b?' (đặt lại mật khẩu)':'')+(active!==Number(u.active)?(active?' (mở khóa)':' (khóa)'):''));res.json({ok:1})})));
+app.delete('/api/users/:id',auth,sys,A((req,res)=>lock(async()=>{const id=+req.params.id;if(id===req.u.id)return res.status(400).json({error:'Không thể tự xóa tài khoản của mình'});
+  const r=await Q1('SELECT username FROM users WHERE id=?',[id]);if(!r.length)return res.status(404).json({error:'Không có tài khoản'});
+  await db.execute({sql:'DELETE FROM users WHERE id=?',args:[id]});await glog(req.u.name,'Xóa tài khoản '+r[0].username);res.json({ok:1})})));
 app.use(express.static(__dirname+'/public'));
 ready.then(()=>app.listen(E.PORT||3000,E.HOST||'0.0.0.0',()=>console.log('Chạy tại cổng '+(E.PORT||3000)))).catch(e=>{console.error('Lỗi khởi động:',e.message);process.exit(1)});
