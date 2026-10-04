@@ -27,7 +27,14 @@ td input[type=number]{width:80px}.ok{color:#17703a;font-weight:600}.bad{color:#b
 <script>
 const K='giaoly-v1';
 const DEF={year:'2026-2027',students:[],att:{},set:{w:[1,2,3],A:8,B:6.5,C:5,min:5,mass:80}};
-let S=JSON.parse(JSON.stringify(DEF)),ME=null,tab='hs',editing=null,hk=1,day=new Date().toISOString().slice(0,10);
+let S=JSON.parse(JSON.stringify(DEF)),ME=null,tab='hs',editing=null,hk=1,day=today();
+function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+const dmy=d=>String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
+function today(){return iso(new Date())}
+function weekInfo(s){const d=new Date(s+'T00:00:00');if(isNaN(d))return '';
+  if(d.getDay()!==0)return '<p class="bad">Ngày này không phải Chủ nhật. Hãy chọn đúng ngày Chúa nhật của buổi học.</p>';
+  const m=new Date(d);m.setDate(d.getDate()-6);const th=new Date(d);th.setDate(d.getDate()-3);
+  return `<p><b>Tuần (${dmy(m)} – ${dmy(d)})</b> · Lễ thứ Năm của tuần này: ${dmy(th)}</p>`}
 function save(){if(ME&&ME.role==='admin')api('/api/admin',{year:S.year,set:S.set,students:S.students.map(({g,...p})=>p)}).then(d=>{S.students=d.doc.students;S.att=d.doc.att}).catch(()=>{})}
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -84,7 +91,7 @@ function vDD(){const e=S.att[day]||{},ds=Object.keys(S.att).sort().reverse();
   return `<div class="card"><h2>Điểm danh</h2>
   <label style="display:inline-flex">Ngày <input type="date" value="${day}" onchange="day=this.value||day;show()"></label>
   <button onclick="allP()">Tất cả có mặt</button> ${S.att[day]?'<button class="g" onclick="delDay()">Xóa ngày này</button>':''}
-  <p class="m">Đã điểm danh ${ds.length} ngày: ${ds.map(d=>`<a href="#" onclick="day='${d}';show();return false">${vn(d)}</a>`).join(' · ')||'chưa có'}</p>
+  ${weekInfo(day)}<p class="m">Đã điểm danh ${ds.length} ngày: ${ds.map(d=>`<a href="#" onclick="day='${d}';show();return false">${vn(d)}</a>`).join(' · ')||'chưa có'}</p>
   <div class="w"><table onchange="chg(event)"><tr><th>STT<th>Họ tên<th>Học giáo lý<th>Lễ Chúa nhật<th>Lễ thứ Năm</tr>
   ${sorted().map((s,i)=>{const r=e[s.id]||{};return `<tr><td>${i+1}<td>${esc(full(s))}<td><select data-id="${s.id}" data-k="c">${[['','—'],['P','Có mặt'],['A','Vắng có phép'],['U','Vắng không phép']].map(([v,l])=>`<option value="${v}" ${(r.c||'')===v?'selected':''}>${l}`).join('')}</select>
   <td><input type="checkbox" data-id="${s.id}" data-k="s" ${r.s?'checked':''}><td><input type="checkbox" data-id="${s.id}" data-k="t" ${r.t?'checked':''}>`}).join('')}</table></div></div>`}
@@ -96,24 +103,31 @@ function delDay(){if(confirm('Xóa điểm danh ngày '+vn(day)+'?')){delete S.a
 
 /* ---------- Tổng kết ---------- */
 const rows=()=>sorted().map(s=>({s,r:res(s)}));
-function vTK(){const R=rows(),n=Object.keys(S.att).length;
-  const top=R.filter(x=>x.r.ok).sort((a,b)=>r2(b.r.y)-r2(a.r.y)||b.r.A.ps-a.r.A.ps).slice(0,3);
-  const le=n?[...R].sort((a,b)=>(b.r.A.s+b.r.A.t)-(a.r.A.s+a.r.A.t)).slice(0,3):[];
-  const ds=Object.keys(S.att).sort();const sym={P:'✓',A:'P',U:'K'};
-  return `<div class="card np"><button onclick="window.print()">In</button> <button onclick="csvSD()">Xuất Excel: Sổ điểm</button> <button onclick="csvDD()">Xuất Excel: Sổ điểm danh</button></div>
-  <div class="card"><h2>Sổ điểm năm học ${esc(S.year)}</h2><div class="w"><table><tr><th>STT<th>Họ tên<th>TB HK1<th>TB HK2<th>Cả năm<th>Xếp loại<th>Lễ CN<th>Lễ T5<th>Chuyên cần học<th>Kết quả</tr>
-  ${R.map(({s,r},i)=>`<tr><td>${i+1}<td>${esc(full(s))}<td>${f2(r.a)}<td>${f2(r.b)}<td><b>${f2(r.y)}</b><td>${r.cls}<td>${pc(r.A.ps)}<td>${pc(r.A.pt)}<td>${pc(r.A.pc)}<td>${kq(r)}`).join('')}</table></div></div>
-  <div class="top card"><div><h2>3 em tiêu biểu</h2><p class="m">Trong các em đủ điều kiện lên lớp: điểm cả năm cao nhất, đồng điểm xét đi lễ.</p><ol>${top.map(x=>`<li>${esc(full(x.s))} — ${f2(x.r.y)} điểm, lễ CN ${pc(x.r.A.ps)}`).join('')||'<li>Chưa có'}</ol></div>
-  <div><h2>3 em đi lễ nhiều nhất</h2><p class="m">Tổng số lần đi lễ Chúa nhật và thứ Năm.</p><ol>${le.map(x=>`<li>${esc(full(x.s))} — ${x.r.A.s+x.r.A.t} lần (CN ${x.r.A.s}, T5 ${x.r.A.t})`).join('')||'<li>Chưa có'}</ol></div></div>
+let SORT='name';
+const tot=r=>r.A.s+r.A.t;
+const cmp=(a,b)=>r2(b.r.y)-r2(a.r.y)||tot(b.r)-tot(a.r);
+function ranks(R){const m=new Map(),L=R.filter(x=>x.r.y!=null).sort(cmp);
+  L.forEach((x,i)=>{const p=L[i-1];m.set(x.s.id,p&&cmp(p,x)===0?m.get(p.s.id):i+1)});return m}
+function vTK(){const R0=rows(),n=Object.keys(S.att).length,rk=ranks(R0);
+  const R=SORT==='rank'?[...R0].sort((a,b)=>(rk.get(a.s.id)||999)-(rk.get(b.s.id)||999)):R0;
+  const top=R0.filter(x=>x.r.ok).sort(cmp).slice(0,3);
+  const le=n?[...R0].sort((a,b)=>tot(b.r)-tot(a.r)).slice(0,3):[];
+  const ds=Object.keys(S.att).sort(),sym={P:'✓',A:'P',U:'K'};
+  return `<div class="card np"><button onclick="window.print()">In</button> <button onclick="csvSD()">Xuất Excel: Sổ điểm</button> <button onclick="csvDD()">Xuất Excel: Sổ điểm danh</button> <button class="g" onclick="SORT=SORT==='rank'?'name':'rank';show()">Đang xếp theo ${SORT==='rank'?'hạng':'tên'} (bấm để đổi)</button></div>
+  <div class="card"><h2>Sổ điểm năm học ${esc(S.year)}</h2><p class="m">Hạng xếp theo điểm cả năm cao nhất; bằng điểm thì xét tổng số lần đi lễ (Chúa nhật + thứ Năm) nhiều hơn; bằng cả hai thì đồng hạng.</p><div class="w"><table><tr><th>STT<th>Họ tên<th>TB HK1<th>TB HK2<th>Cả năm<th>Xếp loại<th>Hạng<th>Số lần lễ CN<th>% lễ CN<th>Số lần lễ T5<th>Chuyên cần học<th>Kết quả</tr>
+  ${R.map(({s,r},i)=>`<tr><td>${i+1}<td>${esc(full(s))}<td>${f2(r.a)}<td>${f2(r.b)}<td><b>${f2(r.y)}</b><td>${r.cls}<td><b>${rk.get(s.id)||'—'}</b><td>${r.A.s}<td>${pc(r.A.ps)}<td>${r.A.t}<td>${pc(r.A.pc)}<td>${kq(r)}`).join('')}</table></div></div>
+  <div class="top card"><div><h2>3 em tiêu biểu</h2><p class="m">Trong các em đủ điều kiện lên lớp, xếp theo điểm cả năm; bằng điểm thì xét tổng số lần đi lễ.</p><ol>${top.map(x=>`<li>${esc(full(x.s))} — ${f2(x.r.y)} điểm, đi lễ ${tot(x.r)} lần`).join('')||'<li>Chưa có'}</ol></div>
+  <div><h2>3 em đi lễ nhiều nhất</h2><p class="m">Tổng số lần đi lễ Chúa nhật và thứ Năm.</p><ol>${le.map(x=>`<li>${esc(full(x.s))} — ${tot(x.r)} lần (CN ${x.r.A.s}, T5 ${x.r.A.t})`).join('')||'<li>Chưa có'}</ol></div></div>
   <div class="card"><h2>Sổ điểm danh</h2><p class="m">✓ có mặt · P vắng có phép · K vắng không phép · CN đi lễ Chúa nhật · T5 đi lễ thứ Năm</p>
   <div class="w"><table><tr><th>Họ tên${ds.map(d=>`<th>${vn(d).slice(0,5)}`).join('')}<th>Có mặt<th>Vắng P<th>Vắng K<th>Lễ CN<th>Lễ T5</tr>
-  ${R.map(({s,r})=>`<tr><td>${esc(full(s))}${ds.map(d=>{const e=S.att[d][s.id]||{};return `<td>${sym[e.c]||''} ${e.s?'CN':''} ${e.t?'T5':''}`}).join('')}<td>${r.A.c}<td>${r.A.a}<td>${r.A.u}<td>${r.A.s}<td>${r.A.t}`).join('')}</table></div></div>`}
+  ${R0.map(({s,r})=>`<tr><td>${esc(full(s))}${ds.map(d=>{const e=S.att[d][s.id]||{};return `<td>${sym[e.c]||''} ${e.s?'CN':''} ${e.t?'T5':''}`}).join('')}<td>${r.A.c}<td>${r.A.a}<td>${r.A.u}<td>${r.A.s}<td>${r.A.t}`).join('')}</table></div></div>`}
 function dl(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click()}
 function csv(rs){return '\ufeff'+rs.map(r=>r.map(c=>'"'+String(c==null?'':c).replace(/"/g,'""')+'"').join(',')).join('\r\n')}
 function csvSD(){const h=['STT','Tên thánh','Họ tên'];[1,2].forEach(k=>h.push('Miệng HK'+k,'15 phút HK'+k,'Thi HK'+k,'TB HK'+k));
-  h.push('Cả năm','Xếp loại','% Lễ CN','% Lễ T5','% Chuyên cần học','Kết quả');
-  const rs=[h,...rows().map(({s,r},i)=>{const x=[i+1,s.saint,s.name];[1,2].forEach(k=>{const g=(s.g||{})[k]||{};x.push(g.m,g.q,g.t,f2(k==1?r.a:r.b))});
-    return x.concat([f2(r.y),r.cls,pc(r.A.ps),pc(r.A.pt),pc(r.A.pc),r.ok?'Lên lớp':'Chưa đủ ĐK: '+r.why.join(', ')])})];
+  h.push('Cả năm','Xếp loại','Hạng','Số lần lễ CN','% Lễ CN','Số lần lễ T5','% Chuyên cần học','Kết quả');
+  const R=rows(),rk=ranks(R);
+  const rs=[h,...R.map(({s,r},i)=>{const x=[i+1,s.saint,s.name];[1,2].forEach(k=>{const g=(s.g||{})[k]||{};x.push(g.m,g.q,g.t,f2(k==1?r.a:r.b))});
+    return x.concat([f2(r.y),r.cls,rk.get(s.id)||'',r.A.s,pc(r.A.ps),r.A.t,pc(r.A.pc),r.ok?'Lên lớp':'Chưa đủ ĐK: '+r.why.join(', ')])})];
   dl('so-diem-'+S.year+'.csv',csv(rs),'text/csv;charset=utf-8')}
 function csvDD(){const ds=Object.keys(S.att).sort(),sym={P:'Có mặt',A:'Vắng phép',U:'Vắng không phép'};
   const rs=[['STT','Họ tên',...ds.map(vn),'Có mặt','Vắng có phép','Vắng không phép','Lễ CN','Lễ T5'],
