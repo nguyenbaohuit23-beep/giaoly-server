@@ -2,7 +2,7 @@ const express=require('express'),{createClient}=require('@libsql/client'),crypto
 const E=process.env,SECRET=E.SESSION_SECRET;
 if(!SECRET){console.error('Thiếu biến SESSION_SECRET (xem README.md).');process.exit(1)}
 const db=createClient({url:E.TURSO_URL||'file:'+(E.DB_FILE||'data.db'),authToken:E.TURSO_TOKEN});
-const DEFSET={w:[1,2,3],A:8,B:6.5,C:5,min:5,mass:80};
+const DEFSET={w:[1,2,3],A:8,B:6.5,C:5,min:5,mass:80,bonusCap:1,maxScore:10,bonusRank:true,reasons:['Phát biểu tốt','Thuộc bài','Giúp đỡ bạn','Đọc kinh, phục vụ lễ','Giữ trật tự']};
 const Q1=async(sql,args=[])=>(await db.execute({sql,args})).rows;
 const hashPw=p=>{const s=crypto.randomBytes(16).toString('hex');return s+':'+crypto.scryptSync(p,s,64).toString('hex')};
 const checkPw=(p,h)=>{try{const[s,x]=h.split(':'),y=crypto.scryptSync(p,s,64),z=Buffer.from(x,'hex');return y.length===z.length&&crypto.timingSafeEqual(y,z)}catch(e){return false}};
@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS log(id INTEGER PRIMARY KEY AUTOINCREMENT,ts TEXT,user
     for(const[u,nm,role,pw]of[['giaolyvien','Giáo lý viên','teacher',E.ADMIN_PASS],['phulop','Phụ lớp','helper',E.HELPER_PASS]]){
       if(pw&&pw.length>=8)await ins(u,nm,role,cid,pw);else console.warn('Bỏ qua tài khoản '+u+' (thiếu mật khẩu hoặc dưới 8 ký tự). Hãy tạo lại trong thẻ Quản trị.')}}
 })();
-const getSet=async()=>{const r=await Q1("SELECT v FROM kv WHERE k='settings'");return r.length?JSON.parse(r[0].v):DEFSET};
+const getSet=async()=>{const r=await Q1("SELECT v FROM kv WHERE k='settings'");return {...DEFSET,...(r.length?JSON.parse(r[0].v):{})}};
 const getDoc=async(c,y)=>{const r=await Q1('SELECT json FROM docs WHERE class_id=? AND year=?',[c,y]);return r.length?JSON.parse(r[0].json):null};
 const years=async c=>(await Q1('SELECT year FROM docs WHERE class_id=? ORDER BY year DESC',[c])).map(r=>r.year);
 const save=(c,y,d,u,L,lc=c)=>{const ts=new Date().toISOString();return db.batch([{sql:'INSERT INTO docs(class_id,year,json) VALUES(?,?,?) ON CONFLICT(class_id,year) DO UPDATE SET json=excluded.json',args:[c,y,JSON.stringify(d)]},...L.map(x=>({sql:'INSERT INTO log(ts,user,text,class_id,year) VALUES(?,?,?,?,?)',args:[ts,u,x,lc,y]}))],'write')};
@@ -63,7 +63,7 @@ const LB={m:'Miệng',q:'15 phút',t:'Thi'},CL={P:'Có mặt',A:'Vắng có phé
 const ROLES=['sysadmin','teacher','helper'];
 
 app.get('/api/me',auth,A(async(q,r)=>{const u=q.u,cl=(await Q1('SELECT id,name FROM classes ORDER BY id')).map(x=>({id:Number(x.id),name:x.name}));
-  r.json({me:{name:u.name,username:u.username,role:u.role==='helper'?'helper':'admin',kind:u.role,classId:u.class_id},classes:u.role==='sysadmin'?cl:cl.filter(x=>x.id===u.class_id),settings:await getSet()})}));
+  r.json({me:{id:u.id,name:u.name,username:u.username,role:u.role==='helper'?'helper':'admin',kind:u.role,classId:u.class_id},classes:u.role==='sysadmin'?cl:cl.filter(x=>x.id===u.class_id),settings:await getSet()})}));
 app.get('/api/data',auth,A(async(q,r)=>{const x=await ctx(q,r);if(!x)return;const d=await getDoc(x.c,x.y);
   if(!d)return r.status(404).json({error:'Không có dữ liệu năm học này'});
   r.json({years:await years(x.c),doc:{year:x.y,...view(d,q.u.role)}})}));
@@ -80,26 +80,47 @@ app.post('/api/op',auth,A((req,res)=>lock(async()=>{const x=await ctx(req,res);i
       L.push(`Điểm danh ${o.day.split('-').reverse().join('/')} · ${nm} của ${full(s)}: ${f(old)} → ${f(v)}`)}
     else if(o.t==='delday'&&req.u.role!=='helper'&&d.att[o.day]){delete d.att[o.day];L.push('Xóa điểm danh ngày '+o.day)}}
   await save(x.c,x.y,d,req.u.name,L);res.json({ok:1})})));
+/* --- Điểm cộng: CHỈ giáo lý viên và phụ lớp của lớp đó; sysadmin chỉ xem --- */
+const bonusRole=(q,r,n)=>q.u.role==='teacher'||q.u.role==='helper'?n():r.status(403).json({error:'Chỉ giáo lý viên và phụ lớp của lớp này được cộng điểm'});
+const r2=v=>Math.round((v+1e-9)*100)/100,f2=v=>String(r2(v)).replace('.',',');
+app.post('/api/bonus',auth,bonusRole,A((req,res)=>lock(async()=>{const x=await ctx(req,res);if(!x)return;const d=await getDoc(x.c,x.y);if(!d)return res.status(404).json({error:'Không có dữ liệu'});
+  const b=req.body||{},st=getSet,set=await st(),s=d.students.find(z=>z.id===b.sid),hk=+b.hk,pts=+b.pts;
+  if(!s)return res.status(400).json({error:'Không tìm thấy em này'});if(![1,2].includes(hk))return res.status(400).json({error:'Học kỳ không hợp lệ'});
+  if(!isFinite(pts)||pts<=0||Math.abs(pts*100-Math.round(pts*100))>1e-6)return res.status(400).json({error:'Số điểm cộng phải lớn hơn 0, tối đa 2 chữ số thập phân'});
+  const reason=String(b.reason||'').trim().slice(0,60);if(!reason)return res.status(400).json({error:'Hãy chọn lý do cộng điểm'});
+  const date=/^\d{4}-\d\d-\d\d$/.test(b.date)?b.date:new Date().toISOString().slice(0,10);d.bonus=d.bonus||[];
+  const used=d.bonus.filter(z=>z.sid===s.id&&z.hk===hk).reduce((a,z)=>a+z.pts,0);
+  if(r2(used+pts)>set.bonusCap+1e-9)return res.status(400).json({error:`Vượt trần điểm cộng: em này đã được cộng ${f2(used)}, mỗi học kỳ tối đa ${f2(set.bonusCap)}`});
+  d.bonus.push({id:crypto.randomBytes(6).toString('hex'),sid:s.id,hk,pts:r2(pts),reason,note:String(b.note||'').slice(0,200),date,by:req.u.name,byId:req.u.id,ts:new Date().toISOString()});
+  await save(x.c,x.y,d,req.u.name,[`Cộng điểm HK${hk} cho ${full(s)}: +${f2(pts)} (${reason})`]);res.json({ok:1})})));
+app.delete('/api/bonus/:id',auth,bonusRole,A((req,res)=>lock(async()=>{const x=await ctx(req,res);if(!x)return;const d=await getDoc(x.c,x.y);if(!d)return res.status(404).json({error:'Không có dữ liệu'});
+  const z=(d.bonus||[]).find(w=>w.id===req.params.id);if(!z)return res.status(404).json({error:'Không có lần cộng điểm này'});
+  if(req.u.role==='helper'&&z.byId!==req.u.id)return res.status(403).json({error:'Phụ lớp chỉ xóa được lần cộng do chính mình nhập'});
+  d.bonus=d.bonus.filter(w=>w.id!==z.id);const s=d.students.find(w=>w.id===z.sid);
+  await save(x.c,x.y,d,req.u.name,[`Xóa điểm cộng HK${z.hk} của ${full(s)}: +${f2(z.pts)} (${z.reason})`]);res.json({ok:1})})));
 const FL=['saint','name','dob','parish','father','fphone','mother','mphone','addr','note'];
 app.post('/api/admin',auth,adm,A((req,res)=>lock(async()=>{const x=await ctx(req,res);if(!x)return;const d=await getDoc(x.c,x.y),b=req.body||{},old=new Map(d.students.map(s=>[s.id,s]));
   const key=a=>JSON.stringify(a.map(({g,...p})=>p));const before=key(d.students);
   d.students=(b.students||[]).slice(0,300).map(p=>{const o={id:String(p.id).slice(0,40)};FL.forEach(k=>o[k]=String(p[k]||'').slice(0,200));o.g=(old.get(o.id)||{}).g||{};return o});
   const ids=new Set(d.students.map(s=>s.id));Object.values(d.att).forEach(a=>Object.keys(a).forEach(i=>{if(!ids.has(i))delete a[i]}));
+  d.bonus=(d.bonus||[]).filter(z=>ids.has(z.sid));
   await save(x.c,x.y,d,req.u.name,key(d.students)!==before?['Cập nhật hồ sơ thiếu nhi']:[]);res.json({doc:{year:x.y,...d}})})));
 app.post('/api/year',auth,adm,A((req,res)=>lock(async()=>{const x=await ctx(req,res);if(!x)return;const name=String(req.body.name||'').trim().slice(0,20);
   if(!name)return res.status(400).json({error:'Nhập tên năm học'});if(await getDoc(x.c,name))return res.status(409).json({error:'Năm học này đã tồn tại'});
-  const nd={students:[],att:{}};if(req.body.copy){const o=await getDoc(x.c,String(req.body.from||x.y));if(o)nd.students=o.students.map(s=>({...s,g:{}}))}
+  const nd={students:[],att:{},bonus:[]};if(req.body.copy){const o=await getDoc(x.c,String(req.body.from||x.y));if(o)nd.students=o.students.map(s=>({...s,g:{}}))}
   await save(x.c,name,nd,req.u.name,['Tạo năm học '+name+(req.body.copy?' (sao chép danh sách thiếu nhi)':'')]);res.json({ok:1})})));
 app.post('/api/restore',auth,adm,A((req,res)=>lock(async()=>{const x=await ctx(req,res);if(!x)return;const b=req.body;
   if(!b||!Array.isArray(b.students)||typeof b.att!=='object')return res.status(400).json({error:'File sao lưu không hợp lệ'});
-  await save(x.c,x.y,{students:b.students,att:b.att},req.u.name,['Khôi phục dữ liệu từ file sao lưu']);res.json({ok:1})})));
+  await save(x.c,x.y,{students:b.students,att:b.att,bonus:Array.isArray(b.bonus)?b.bonus:[]},req.u.name,['Khôi phục dữ liệu từ file sao lưu']);res.json({ok:1})})));
 app.get('/api/log',auth,adm,A(async(q,r)=>{const c=q.u.role==='sysadmin'?+q.query.c||null:q.u.class_id;
   const x=await Q1('SELECT ts,user,text,year FROM log WHERE class_id=?'+(q.u.role==='sysadmin'?' OR class_id IS NULL':'')+' ORDER BY id DESC LIMIT 300',[c]);
   r.json(x.map(w=>({ts:w.ts,user:w.user,text:w.text,year:w.year})))}));
 
 /* --- Quản trị (sysadmin) --- */
 app.post('/api/settings',auth,sys,A(async(req,res)=>{const s=(req.body||{}).set||{},n=(v,f)=>isFinite(+v)&&v!==''&&v!==null?+v:f;
-  const set={w:[0,1,2].map(i=>n(s.w&&s.w[i],1)||1),A:n(s.A,8),B:n(s.B,6.5),C:n(s.C,5),min:n(s.min,5),mass:n(s.mass,80)};
+  const cur=await getSet(),rs=Array.isArray(s.reasons)?s.reasons.map(z=>String(z).trim().slice(0,40)).filter(Boolean).slice(0,20):cur.reasons;
+  const set={w:[0,1,2].map(i=>n(s.w&&s.w[i],1)||1),A:n(s.A,8),B:n(s.B,6.5),C:n(s.C,5),min:n(s.min,5),mass:n(s.mass,80),
+    bonusCap:Math.min(10,Math.max(0,n(s.bonusCap,cur.bonusCap))),maxScore:10,bonusRank:s.bonusRank===undefined?cur.bonusRank:!!s.bonusRank,reasons:rs};
   await db.execute({sql:"INSERT INTO kv(k,v) VALUES('settings',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v",args:[JSON.stringify(set)]});
   await glog(req.u.name,'Cập nhật quy tắc tính điểm toàn hệ thống');res.json({set})}));
 app.post('/api/classes',auth,sys,A(async(req,res)=>{const name=String(req.body.name||'').trim().slice(0,80),year=String(req.body.year||'').trim().slice(0,20);
