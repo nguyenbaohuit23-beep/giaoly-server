@@ -19,15 +19,23 @@ button.g{background:#8a8794}button.s{padding:3px 9px;font-size:13px}
 th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;font-size:15px}th{background:#efe9dc}
 td input[type=number]{width:80px}.ok{color:#17703a;font-weight:600}.bad{color:#b3261e;font-weight:600}
 .top{display:grid;grid-template-columns:1fr 1fr;gap:16px}ol{margin:0;padding-left:20px}
+.chip{background:var(--pri);color:#fff;border-radius:999px;padding:2px 10px;font-size:14px;font-weight:600}
+.bn{background:#fbf5f6}.cp{background:#f3e6e9!important}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:20;padding:12px}
+.dlg{background:#fff;border-radius:10px;padding:22px;width:min(560px,100%);max-height:94vh;overflow:auto}
+.pl{background:#fff;color:var(--ink);border:1px solid #ccc;border-radius:999px;padding:7px 14px;min-height:38px}
+.pl.on{background:var(--pri);color:#fff;border-color:var(--pri);font-weight:600}.pl:disabled{opacity:.4;cursor:not-allowed}
+.bar{height:10px;border-radius:999px;background:var(--line);position:relative;overflow:hidden}.bar i{position:absolute;top:0;bottom:0;left:0}
 @media print{.np,header{display:none!important}body{background:#fff}.card{border:0;padding:0}th,td{font-size:12px;padding:3px 5px}}
 @media(max-width:700px){.top{grid-template-columns:1fr}}
 </style></head><body>
 <header class="np"><span class="by" id="who"></span><h1>⛪ Quản lý lớp giáo lý</h1><div id="sel" style="margin-bottom:8px"></div><nav id="nav"></nav></header>
 <main id="app"></main>
+<div id="modal" class="np"></div>
 <div id="author" class="np">NguyenNgocBao</div>
 <script>
 const K='giaoly-v1';
-const DEF={year:'2026-2027',students:[],att:{},set:{w:[1,2,3],A:8,B:6.5,C:5,min:5,mass:80}};
+const DEF={year:'2026-2027',students:[],att:{},set:{w:[1,2,3],A:8,B:6.5,C:5,min:5,mass:80,bonusCap:1,maxScore:10,bonusRank:true,reasons:[]},bonus:[]};
 let S=JSON.parse(JSON.stringify(DEF)),CLASSES=[],CLS=null,YR=null,YEARS=[],SET=DEF.set,ME=null,tab='hs',editing=null,hk=1,day=today();
 function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 const dmy=d=>String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
@@ -53,11 +61,15 @@ function avg(st,h){const g=(st.g||{})[h]||{},w=S.set.w;
 function att(st){const ds=Object.keys(S.att),n=ds.length;let c=0,a=0,u=0,s=0,t=0;
   ds.forEach(d=>{const e=S.att[d][st.id]||{};if(e.c==='P')c++;if(e.c==='A')a++;if(e.c==='U')u++;if(e.s)s++;if(e.t)t++});
   const p=v=>n?v/n*100:null;return{n,c,a,u,s,t,pc:p(c),ps:p(s),pt:p(t)}}
-function res(st){const a=avg(st,1),b=avg(st,2),y=a!=null&&b!=null?(a+b)/2:null,A=att(st),why=[];let cls='';
+const bonusOf=(st,h)=>r2((S.bonus||[]).filter(z=>z.sid===st.id&&z.hk===h).reduce((a,z)=>a+z.pts,0));
+const bonusN=(st,h)=>(S.bonus||[]).filter(z=>z.sid===st.id&&z.hk===h).length;
+const canBonus=()=>ME&&(ME.kind==='teacher'||ME.kind==='helper');
+function avgB(st,h){const a=avg(st,h);return a==null?null:Math.min(S.set.maxScore||10,r2(r2(a)+bonusOf(st,h)))}
+function res(st){const U=S.set.bonusRank!==false?avgB:avg,a=U(st,1),b=U(st,2),y=a!=null&&b!=null?(a+b)/2:null,A=att(st),why=[],c1=bonusOf(st,1),c2=bonusOf(st,2);let cls='';
   if(y!=null){const v=r2(y);cls=v>=S.set.A?'Giỏi':v>=S.set.B?'Khá':v>=S.set.C?'Trung bình':'Yếu';if(v<S.set.min)why.push('thiếu điểm')}
   else why.push('chưa đủ điểm');
   if(A.ps==null||A.ps<S.set.mass)why.push('thiếu đi lễ CN');
-  return{a,b,y,cls,A,why,ok:!why.length}}
+  return{a,b,y,cls,A,why,c1,c2,ok:!why.length}}
 const kq=r=>r.ok?'<span class=ok>Lên lớp</span>':'<span class=bad>Chưa đủ ĐK ('+r.why.join(', ')+')</span>';
 
 /* ---------- Thiếu nhi ---------- */
@@ -83,13 +95,38 @@ function delHS(id){const s=S.students.find(x=>x.id===id);
 /* ---------- Điểm ---------- */
 function vD(){const w=S.set.w;
   return `<div class="card"><h2>Nhập điểm <select onchange="hk=+this.value;show()"><option value=1 ${hk==1?'selected':''}>Học kỳ 1<option value=2 ${hk==2?'selected':''}>Học kỳ 2</select></h2>
-  <p class="m">Thang 10. Hệ số: Miệng ×${w[0]}, 15 phút ×${w[1]}, Thi ×${w[2]}. Điểm được tự tính khi đủ 3 cột.</p>
-  <div class="w"><table oninput="inp(event)"><tr><th>STT<th>Họ tên<th>Miệng<th>15 phút<th>Thi<th>TB học kỳ</tr>
-  ${sorted().map((s,i)=>{const g=(s.g||{})[hk]||{};return `<tr><td>${i+1}<td>${esc(full(s))}${['m','q','t'].map(k=>`<td><input type="number" min="0" max="10" step="0.25" data-id="${s.id}" data-k="${k}" value="${g[k]==null?'':g[k]}">`).join('')}<td id="${s.id}_a"><b>${f2(avg(s,hk))}</b>`}).join('')}</table></div></div>`}
+  <p class="m">Thang 10. Hệ số: Miệng ×${w[0]}, 15 phút ×${w[1]}, Thi ×${w[2]}. Điểm được tự tính khi đủ 3 cột. Điểm cộng tối đa <b>+${f2(S.set.bonusCap)}</b> mỗi học kỳ, tổng không vượt quá ${S.set.maxScore||10}.${isSys()?' <b>Sysadmin chỉ xem điểm cộng; giáo lý viên và phụ lớp của lớp mới được cộng.</b>':''}</p>
+  <div class="w"><table oninput="inp(event)"><tr><th>STT<th>Họ tên<th>Miệng<th>15 phút<th>Thi<th>TB học kỳ<th class="cp">Điểm cộng<th>TB sau cộng</tr>
+  ${sorted().map((s,i)=>{const g=(s.g||{})[hk]||{};return `<tr><td>${i+1}<td>${esc(full(s))}${['m','q','t'].map(k=>`<td><input type="number" min="0" max="10" step="0.25" data-id="${s.id}" data-k="${k}" value="${g[k]==null?'':g[k]}">`).join('')}<td id="${s.id}_a"><b>${f2(avg(s,hk))}</b><td class="bn">${bonusCell(s)}<td id="${s.id}_b">${afterCell(s)}`}).join('')}</table></div></div>`}
+function bonusCell(s){const b=bonusOf(s,hk),n=bonusN(s,hk);
+  return (n?`<span class="chip">+${f2(b)}</span> <span class="m">${n} lần</span> `:'<span class="m">Chưa có</span> ')+(canBonus()?`<button class="s" onclick="openBonus('${s.id}')">+ Cộng</button>`:(n?`<button class="s g" onclick="openBonus('${s.id}')">Xem</button>`:''))}
+function afterCell(s){const a=avg(s,hk);if(a==null)return '';const v=avgB(s,hk),b=bonusOf(s,hk),note=b>=S.set.bonusCap&&b>0?'đạt trần cộng':(r2(a)+b>(S.set.maxScore||10)?'chạm trần '+(S.set.maxScore||10):'');
+  return `<b>${f2(v)}</b>${note?` <span class="m">${note}</span>`:''}`}
+/* ---- Hộp thoại cộng điểm ---- */
+let BM=null;
+const closeBM=()=>{BM=null;$('#modal').innerHTML=''};
+function openBonus(sid){BM={sid,hk,reason:(SET.reasons||[])[0]||'Lý do khác',amt:0.5,date:today(),note:''};drawBonus()}
+function drawBonus(){if(!BM)return;const s=S.students.find(x=>x.id===BM.sid);if(!s)return closeBM();
+  const cap=SET.bonusCap,used=bonusOf(s,BM.hk),left=r2(cap-used),can=canBonus(),a=avg(s,BM.hk),max=SET.maxScore||10;
+  if(can&&BM.amt>left&&left>0)BM.amt=[1,0.5,0.25].find(v=>v<=left)||left;
+  const reasons=[...(SET.reasons||[]),'Lý do khác'],amts=[0.25,0.5,1],after=a==null?null:Math.min(max,r2(r2(a)+used+(can?Math.min(BM.amt||0,left):0)));
+  const hist=(S.bonus||[]).filter(z=>z.sid===s.id&&z.hk===BM.hk).sort((p,q)=>q.date.localeCompare(p.date)||q.ts.localeCompare(p.ts));
+  $('#modal').innerHTML=`<div class="ov" onclick="if(event.target===this)closeBM()"><div class="dlg"><h2 style="margin:0">${can?'Cộng điểm':'Điểm cộng'}</h2><div class="m">${esc(full(s))} · Học kỳ ${BM.hk} · TB hiện tại ${a==null?'chưa đủ 3 cột điểm':f2(a)}</div>
+  ${can?(left<=0?`<p class="bad">Em này đã đạt trần điểm cộng của học kỳ (${f2(cap)}). Muốn cộng thêm, hãy xóa bớt một lần cộng bên dưới.</p>`:`<h3 style="font-size:14px;margin:14px 0 6px">Lý do</h3><div style="display:flex;flex-wrap:wrap;gap:8px">${reasons.map(r=>`<button class="pl ${r===BM.reason?'on':''}" onclick="BM.reason=this.dataset.r;drawBonus()" data-r="${esc(r)}">${esc(r)}</button>`).join('')}</div>
+  <h3 style="font-size:14px;margin:14px 0 6px">Số điểm cộng</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${amts.map(v=>`<button class="pl ${v===BM.amt?'on':''}" ${v>left?'disabled':''} onclick="BM.amt=${v};drawBonus()">+${f2(v)}</button>`).join('')}<label style="flex-direction:row;align-items:center;gap:6px">Tự nhập <input type="number" min="0.01" max="${left}" step="0.05" style="width:90px" value="${amts.includes(BM.amt)?'':BM.amt}" onchange="BM.amt=+this.value||0;drawBonus()"></label></div>
+  <div class="grid" style="margin-top:12px"><label>Ngày<input type="date" value="${BM.date}" oninput="BM.date=this.value"></label><label>Ghi chú (không bắt buộc)<input value="${esc(BM.note)}" maxlength="200" oninput="BM.note=this.value"></label></div>
+  <div style="background:var(--bg);border-radius:8px;padding:12px 14px"><div style="display:flex;justify-content:space-between"><span>Trung bình học kỳ</span><span>${a==null?'—':f2(a)+' → <b class="ok">'+f2(after)+'</b>'}</span></div>
+  <div class="m" style="display:flex;justify-content:space-between;font-size:13px"><span>Đã cộng trong học kỳ</span><span>${f2(used)} → ${f2(used+Math.min(BM.amt||0,left))} / tối đa ${f2(cap)}</span></div>
+  <div class="bar"><i style="width:${Math.min(100,used/cap*100)}%;background:var(--pri)"></i><i style="left:${Math.min(100,used/cap*100)}%;width:${Math.min(100-used/cap*100,Math.min(BM.amt||0,left)/cap*100)}%;background:#c58a99"></i></div></div>`):''}
+  <h3 style="font-size:14px;margin:16px 0 4px">Lịch sử điểm cộng của em (HK${BM.hk})</h3>${hist.length?hist.map(z=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px"><span>${vn(z.date)} · ${esc(z.reason)}${z.note?' — '+esc(z.note):''} · <span class="m">${esc(z.by)}</span></span><span><b>+${f2(z.pts)}</b>${can&&(ME.kind==='teacher'||z.byId===ME.id)?` <button class="s g" onclick="delBonus('${z.id}')">Xóa</button>`:''}</span></div>`).join(''):'<p class="m">Chưa có lần cộng nào.</p>'}
+  <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px"><button class="g" onclick="closeBM()">${can?'Hủy':'Đóng'}</button>${can&&left>0?`<button onclick="saveBonus()">Lưu điểm cộng</button>`:''}</div></div></div>`}
+function saveBonus(){if(!BM.reason)return alert('Hãy chọn lý do');if(!(BM.amt>0))return alert('Hãy chọn số điểm cộng');
+  api('/api/bonus'+Q(),{sid:BM.sid,hk:BM.hk,pts:BM.amt,reason:BM.reason,note:BM.note,date:BM.date}).then(()=>loadDoc()).then(()=>{const k=BM;closeBM();show();k&&0}).catch(()=>{})}
+function delBonus(id){if(!confirm('Xóa lần cộng điểm này?'))return;api('/api/bonus/'+id+Q(),undefined,'DELETE').then(()=>loadDoc()).then(()=>{show();drawBonus()}).catch(()=>{})}
 function inp(e){const el=e.target,st=S.students.find(x=>x.id===el.dataset.id);if(!st)return;
   const v=el.value===''?'':Math.min(10,Math.max(0,+el.value));
   st.g=st.g||{};st.g[hk]=st.g[hk]||{};st.g[hk][el.dataset.k]=v;op([{t:'g',id:st.id,hk,k:el.dataset.k,v}]);
-  $('#'+st.id+'_a').innerHTML='<b>'+f2(avg(st,hk))+'</b>'}
+  $('#'+st.id+'_a').innerHTML='<b>'+f2(avg(st,hk))+'</b>';$('#'+st.id+'_b').innerHTML=afterCell(st)}
 
 /* ---------- Điểm danh ---------- */
 function vDD(){const e=S.att[day]||{},ds=Object.keys(S.att).sort().reverse();
@@ -119,8 +156,8 @@ function vTK(){const R0=rows(),n=Object.keys(S.att).length,rk=ranks(R0);
   const le=n?[...R0].sort((a,b)=>tot(b.r)-tot(a.r)).slice(0,3):[];
   const ds=Object.keys(S.att).sort(),sym={P:'✓',A:'P',U:'K'};
   return `<div class="card np"><button onclick="window.print()">In</button> <button onclick="csvSD()">Xuất Excel: Sổ điểm</button> <button onclick="csvDD()">Xuất Excel: Sổ điểm danh</button> <button class="g" onclick="SORT=SORT==='rank'?'name':'rank';show()">Đang xếp theo ${SORT==='rank'?'hạng':'tên'} (bấm để đổi)</button></div>
-  <div class="card"><h2>${esc(CN())} — Sổ điểm năm học ${esc(S.year)}</h2><p class="m">Hạng xếp theo điểm cả năm cao nhất; bằng điểm thì xét tổng số lần đi lễ (Chúa nhật + thứ Năm) nhiều hơn; bằng cả hai thì đồng hạng.</p><div class="w"><table><tr><th>STT<th>Họ tên<th>TB HK1<th>TB HK2<th>Cả năm<th>Xếp loại<th>Hạng<th>Số lần lễ CN<th>% lễ CN<th>Số lần lễ T5<th>Chuyên cần học<th>Kết quả</tr>
-  ${R.map(({s,r},i)=>`<tr><td>${i+1}<td>${esc(full(s))}<td>${f2(r.a)}<td>${f2(r.b)}<td><b>${f2(r.y)}</b><td>${r.cls}<td><b>${rk.get(s.id)||'—'}</b><td>${r.A.s}<td>${pc(r.A.ps)}<td>${r.A.t}<td>${pc(r.A.pc)}<td>${kq(r)}`).join('')}</table></div></div>
+  <div class="card"><h2>${esc(CN())} — Sổ điểm năm học ${esc(S.year)}</h2><p class="m">Hạng xếp theo điểm cả năm cao nhất; bằng điểm thì xét tổng số lần đi lễ (Chúa nhật + thứ Năm) nhiều hơn; bằng cả hai thì đồng hạng.</p><div class="w"><table><tr><th>STT<th>Họ tên<th>TB HK1<th>TB HK2<th>Cả năm<th class="cp">Cộng HK1<th class="cp">Cộng HK2<th>Xếp loại<th>Hạng<th>Số lần lễ CN<th>% lễ CN<th>Số lần lễ T5<th>Chuyên cần học<th>Kết quả</tr>
+  ${R.map(({s,r},i)=>`<tr><td>${i+1}<td>${esc(full(s))}<td>${f2(r.a)}<td>${f2(r.b)}<td><b>${f2(r.y)}</b><td class="bn">${r.c1?'+'+f2(r.c1):'—'}<td class="bn">${r.c2?'+'+f2(r.c2):'—'}<td>${r.cls}<td><b>${rk.get(s.id)||'—'}</b><td>${r.A.s}<td>${pc(r.A.ps)}<td>${r.A.t}<td>${pc(r.A.pc)}<td>${kq(r)}`).join('')}</table></div></div>
   <div class="top card"><div><h2>3 em tiêu biểu</h2><p class="m">Trong các em đủ điều kiện lên lớp, xếp theo điểm cả năm; bằng điểm thì xét tổng số lần đi lễ.</p><ol>${top.map(x=>`<li>${esc(full(x.s))} — ${f2(x.r.y)} điểm, đi lễ ${tot(x.r)} lần`).join('')||'<li>Chưa có'}</ol></div>
   <div><h2>3 em đi lễ nhiều nhất</h2><p class="m">Tổng số lần đi lễ Chúa nhật và thứ Năm.</p><ol>${le.map(x=>`<li>${esc(full(x.s))} — ${tot(x.r)} lần (CN ${x.r.A.s}, T5 ${x.r.A.t})`).join('')||'<li>Chưa có'}</ol></div></div>
   <div class="card"><h2>Sổ điểm danh</h2><p class="m">✓ có mặt · P vắng có phép · K vắng không phép · CN đi lễ Chúa nhật · T5 đi lễ thứ Năm</p>
@@ -129,10 +166,10 @@ function vTK(){const R0=rows(),n=Object.keys(S.att).length,rk=ranks(R0);
 function dl(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click()}
 function csv(rs){return '\ufeff'+rs.map(r=>r.map(c=>'"'+String(c==null?'':c).replace(/"/g,'""')+'"').join(',')).join('\r\n')}
 function csvSD(){const h=['STT','Tên thánh','Họ tên'];[1,2].forEach(k=>h.push('Miệng HK'+k,'15 phút HK'+k,'Thi HK'+k,'TB HK'+k));
-  h.push('Cả năm','Xếp loại','Hạng','Số lần lễ CN','% Lễ CN','Số lần lễ T5','% Chuyên cần học','Kết quả');
+  h.push('Cả năm','Điểm cộng HK1','Điểm cộng HK2','Xếp loại','Hạng','Số lần lễ CN','% Lễ CN','Số lần lễ T5','% Chuyên cần học','Kết quả');
   const R=rows(),rk=ranks(R);
   const rs=[h,...R.map(({s,r},i)=>{const x=[i+1,s.saint,s.name];[1,2].forEach(k=>{const g=(s.g||{})[k]||{};x.push(g.m,g.q,g.t,f2(k==1?r.a:r.b))});
-    return x.concat([f2(r.y),r.cls,rk.get(s.id)||'',r.A.s,pc(r.A.ps),r.A.t,pc(r.A.pc),r.ok?'Lên lớp':'Chưa đủ ĐK: '+r.why.join(', ')])})];
+    return x.concat([f2(r.y),f2(r.c1),f2(r.c2),r.cls,rk.get(s.id)||'',r.A.s,pc(r.A.ps),r.A.t,pc(r.A.pc),r.ok?'Lên lớp':'Chưa đủ ĐK: '+r.why.join(', ')])})];
   dl('so-diem-'+S.year+'.csv',csv(rs),'text/csv;charset=utf-8')}
 function csvDD(){const ds=Object.keys(S.att).sort(),sym={P:'Có mặt',A:'Vắng phép',U:'Vắng không phép'};
   const rs=[['STT','Họ tên',...ds.map(vn),'Có mặt','Vắng có phép','Vắng không phép','Lễ CN','Lễ T5'],
@@ -149,12 +186,18 @@ function vCD(){const t=SET,d=isSys()?'':'disabled';
   ${n('w0','Hệ số Miệng',t.w[0],1)}${n('w1','Hệ số 15 phút',t.w[1],1)}${n('w2','Hệ số Thi',t.w[2],1)}
   ${n('A','Giỏi từ điểm',t.A)}${n('B','Khá từ điểm',t.B)}${n('C','Trung bình từ điểm',t.C)}
   ${n('min','Điểm tối thiểu để lên lớp',t.min)}${n('mass','% đi lễ CN tối thiểu',t.mass,1)}</div></div>
+  <div class="card"><h2>Điểm cộng (chung toàn hệ thống)</h2>${isSys()?'<p class="m">Chỉ giáo lý viên và phụ lớp của từng lớp được cộng điểm. Sysadmin chỉ đặt quy tắc và xem.</p>':'<p class="m">Chỉ sysadmin được thay đổi các quy tắc này.</p>'}<div class="grid">
+  ${n('bonusCap','Điểm cộng tối đa mỗi học kỳ',t.bonusCap,0.25)}
+  <label>Tính điểm cộng vào điểm cả năm, xếp loại, xếp hạng và em tiêu biểu<select ${d} onchange="setv('bonusRank',this.value==='1')"><option value="1" ${t.bonusRank!==false?'selected':''}>Có</option><option value="0" ${t.bonusRank===false?'selected':''}>Không (chỉ hiển thị)</option></select></label>
+  <label>Danh mục lý do (mỗi dòng một lý do)<textarea rows="6" ${d} onchange="setv('reasons',this.value)" style="font:inherit;padding:6px 8px;border:1px solid #ccc;border-radius:5px">${esc((t.reasons||[]).join('\n'))}</textarea></label></div></div>
   <div class="card"><h2>Tạo năm học mới cho ${esc(CN())}</h2><div class="grid"><label>Tên năm học<input id="ny" placeholder="2027-2028"></label></div>
   <label style="flex-direction:row;gap:6px;align-items:center"><input type="checkbox" id="nc" checked> Sao chép danh sách thiếu nhi từ năm ${esc(S.year)} (không chép điểm và điểm danh)</label><br><button onclick="newYear()">Tạo năm học</button></div>
   <div class="card"><h2>Sao lưu dữ liệu (lớp ${esc(CN())}, năm ${esc(S.year)})</h2><p class="m">Dữ liệu lưu trên máy chủ. Nên tải file sao lưu định kỳ.</p>
-  <button onclick="dl('sao-luu-'+CN()+'-'+S.year+'.json',JSON.stringify({students:S.students,att:S.att}),'application/json')">Xuất file sao lưu</button>
+  <button onclick="dl('sao-luu-'+CN()+'-'+S.year+'.json',JSON.stringify({students:S.students,att:S.att,bonus:S.bonus||[]}),'application/json')">Xuất file sao lưu</button>
   <label style="display:inline-flex;margin-top:10px">Khôi phục từ file sao lưu<input type="file" accept=".json" onchange="imp(this.files[0])"></label></div>`}
-function setv(k,v){v=+v;if(k[0]==='w')SET.w[+k[1]]=v||1;else SET[k]=v;S.set=SET;api('/api/settings',{set:SET}).catch(()=>{})}
+function setv(k,v){if(k==='reasons')SET.reasons=String(v).split('\n').map(x=>x.trim()).filter(Boolean);
+  else if(k==='bonusRank')SET.bonusRank=!!v;else{v=+v;if(k[0]==='w')SET.w[+k[1]]=v||1;else SET[k]=v}
+  S.set=SET;api('/api/settings',{set:SET}).then(r=>{SET=r.set;S.set=SET}).catch(()=>{})}
 function newYear(){const y=$('#ny').value.trim();if(!y)return alert('Hãy nhập tên năm học');
   api('/api/year'+Q(),{name:y,copy:$('#nc').checked,from:YR}).then(()=>{YR=y;return loadDoc()}).then(()=>show()).catch(()=>{})}
 function imp(f){if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!d.students)throw 0;
